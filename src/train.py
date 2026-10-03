@@ -15,16 +15,26 @@ from sklearn.svm import SVC
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
-
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 from src.data_loader import load_and_prepare
 
 MODELS_DIR = "results/models"
 
 MODELS = {
-    "LogisticRegression": LogisticRegression(max_iter=1000),
+    "LogisticRegression": Pipeline([
+        ("scaler", StandardScaler()),
+        ("clf", LogisticRegression(max_iter=1000))
+    ]),
     "NaiveBayes": GaussianNB(),
-    "KNN": KNeighborsClassifier(n_neighbors=3),
-    "SVM": SVC(probability=True, random_state=42),
+    "KNN": Pipeline([
+        ("scaler", StandardScaler()),
+        ("clf", KNeighborsClassifier(n_neighbors=5))
+    ]),
+    "SVM": Pipeline([
+        ("scaler", StandardScaler()),
+        ("clf", SVC(probability=True, random_state=42, max_iter=5000))
+    ]),
     "DecisionTree": DecisionTreeClassifier(random_state=42),
     "RandomForest": RandomForestClassifier(random_state=42),
     "XGBoost": XGBClassifier(eval_metric="logloss", random_state=42),
@@ -60,7 +70,7 @@ def save_models(trained_models: dict, out_dir: str = MODELS_DIR) -> None:
 
 
 if __name__ == "__main__":
-    X_train, X_test, y_train, y_test = load_and_prepare("data/phishing_urls.csv")
+    X_train, X_test, y_train, y_test = load_and_prepare("data/phishing_urls.csv", sample_size=20000)
 
     print(f"\nTraining on {X_train.shape[0]} samples, {X_train.shape[1]} features...\n")
     trained_models = train_all_models(X_train, y_train)

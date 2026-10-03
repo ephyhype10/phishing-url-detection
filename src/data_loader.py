@@ -11,19 +11,22 @@ from src.feature_extractor import extract_features
 
 
 def load_raw_data(csv_path: str) -> pd.DataFrame:
-    """
-    Loads the dataset CSV. Expects at least two columns: 'url' and 'label'
-    (label: 1 = phishing, 0 = legitimate). Raises a clear error if columns
-    are missing, instead of failing deep inside the pipeline.
-    """
     df = pd.read_csv(csv_path)
-
     df.columns = [c.strip().lower() for c in df.columns]
 
     if "url" not in df.columns or "label" not in df.columns:
         raise ValueError(
             f"Dataset must contain 'url' and 'label' columns. Found: {list(df.columns)}"
         )
+
+    # Normalize label column to 0/1, regardless of pandas' internal string dtype
+    label_map = {"good": 0, "bad": 1, "legitimate": 0, "phishing": 1,
+                 "0": 0, "1": 1}
+    normalized = df["label"].astype(str).str.strip().str.lower()
+
+    if normalized.isin(label_map.keys()).any():
+        df["label"] = normalized.map(label_map)
+    # else: leave as-is, assume it's already numeric 0/1
 
     return df
 
@@ -70,19 +73,32 @@ def split_data(features_df: pd.DataFrame, test_size: float = 0.2, random_state: 
     return X_train, X_test, y_train, y_test
 
 
-def load_and_prepare(csv_path: str, test_size: float = 0.2, random_state: int = 42):
+def load_and_prepare(csv_path: str, test_size: float = 0.2, random_state: int = 42, sample_size: int = None):
     """
     Convenience function: runs the full pipeline from raw CSV to
-    train/test feature splits in one call.
+    train/test feature splits in one call. sample_size optionally
+    limits how many rows are used (useful for large datasets).
     """
     df = load_raw_data(csv_path)
     df = clean_data(df)
+
+    if sample_size and len(df) > sample_size:
+        per_class = sample_size // 2
+        legit = df[df["label"] == 0]
+        phish = df[df["label"] == 1]
+
+        legit_sample = legit.sample(min(len(legit), per_class), random_state=random_state)
+        phish_sample = phish.sample(min(len(phish), per_class), random_state=random_state)
+
+        df = pd.concat([legit_sample, phish_sample]).sample(
+            frac=1, random_state=random_state
+        ).reset_index(drop=True)
+
     features_df = build_feature_matrix(df)
     return split_data(features_df, test_size=test_size, random_state=random_state)
 
-
 if __name__ == "__main__":
-    X_train, X_test, y_train, y_test = load_and_prepare("data/phishing_urls.csv")
+    X_train, X_test, y_train, y_test = load_and_prepare("data/phishing_urls.csv", sample_size=20000)
     print("Train shape:", X_train.shape)
     print("Test shape:", X_test.shape)
     print("Class balance (train):\n", y_train.value_counts())
